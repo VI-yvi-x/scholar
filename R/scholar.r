@@ -81,25 +81,37 @@ get_profile <- function(id) {
 ##' @importFrom rvest html_nodes html_text
 ##' @importFrom dplyr "%>%"
 ##' @importFrom httr GET
+
 get_citation_history <- function(id) {
 
-    ## Ensure only one ID
-    id <- tidy_id(id)
-
-    ## Read the page and parse the key data
-    url_template <- "http://scholar.google.com/citations?hl=en&user=%s&pagesize=100&view_op=list_works"
-    url <- sprintf(url_template, id)
+  ## Ensure only one ID  
+  id <- tidy_id(id)
   
-    ## A better way would actually be to read out the plot of citations
-    page <- GET(url, handle=getOption("scholar_handle")) %>% read_html()
-    years <- page %>% html_nodes(xpath="//*/span[@class='gsc_g_t']") %>%
-        html_text() %>% as.numeric()
-    vals <- page %>% html_nodes(xpath="//*/span[@class='gsc_g_al']") %>%
-        html_text() %>% as.numeric()
-
-    df <- data.frame(year=years, cites=vals)
+  ## Read the page and parse the key data
+  url_template <- "http://scholar.google.com/citations?hl=en&user=%s&pagesize=100&view_op=list_works"
+  url <- sprintf(url_template, id)
   
-    return(df)
+  ## A better way would actually be to read out the plot of citations
+  doc <- htmlTreeParse(url, useInternalNodes=TRUE)
+  chart <- xpathSApply(doc, "//img", xmlAttrs)[[3]][['src']]
+
+  ## Get values
+  vals <- str_extract(chart, "chd=t:((([0-9]*.[0-9]*,+)*)[0-9]*.[0-9])")
+  vals <- as.numeric(unlist(str_split(str_sub(vals, 7), ",")))
+    
+  ## Get the years
+  years <- str_extract(chart, "chxl=0:\\|((\\d*)\\|)*\\d*")
+  years <- as.numeric(unlist(str_split(str_sub(years, 9), "\\|")))
+  years <- years[!is.na(years)]
+  years <- seq(years[1], years[length(years)])
+    
+  ## Get the y-scale
+  ymax <- str_extract(chart, "chxr=(\\d*,)*\\d*")
+  ymax <- as.numeric(unlist(str_split(str_sub(ymax, 6), ",")))[4]
+    
+  df <- data.frame(year=years, cites=round(vals*ymax/100, 0))
+  
+  return(df)
 }
 
 
